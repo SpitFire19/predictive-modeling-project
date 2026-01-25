@@ -11,16 +11,15 @@ def date_raw_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
     df['Time'] = (
     pd.to_datetime(df['Date']) - pd.Timestamp("1970-01-01")
     ).dt.days
-    return df.drop(columns = 'Date')
+    return df
+    # return df.drop(columns = 'Date')
 
 def write_predictions_csv(
-    ids: list[int],
-    y_pred: list[float],
-    output_path: str,
-    target_name:str ='Net_demand'
+    pred: list[float],
+    sample_pred_path: str,
+    output_path: str
 ):
-    output = pd.DataFrame({
-        "id": ids,
-        target_name: y_pred
-    })
-    output.to_csv(output_path, index=False)
+    submit = pd.read_csv(sample_pred_path)
+    submit["Net_demand"] = pred
+    submit.to_csv(output_path, index=False)
+

@@ -1,11 +1,13 @@
 rm(list=objects())
 library(tidyverse)
 library(lubridate)
-source('../R/score.R')
+library(readr)
+library(magrittr)
+source('~/Documents/predictive-modeling-project/R/score.R')
 
-setws("~/Documents/Modelisaion predictive")
-Data0 <- read_delim("../Data/train.csv", delim=",")
-Data1<- read_delim("../Data/test.csv", delim=",")
+setwd("~/Documents/predictive-modeling-project")
+Data0 <- read_delim("~/Documents/predictive-modeling-project/Data/net-load-forecasting-during-soberty-period/train.csv", delim=",")
+Data1<- read_delim("~/Documents/predictive-modeling-project/Data/net-load-forecasting-during-soberty-period/test.csv", delim=",")
 
 range(Data0$Date)
 
@@ -32,7 +34,7 @@ mod0.forecast <- predict(mod0, newdata=Data0[sel_b,])
 rmse(y=Data0$Net_demand[sel_b], ychap=mod0.forecast)
 
 
-
+Sys.setlocale("LC_TIME", "en_US.UTF-8")
 
 ######bloc CV
 Nblock<-8
@@ -230,7 +232,7 @@ adj.rsquare<-lapply(lm.fourier,
                     function(x){summary(x)$adj.r.squared})%>%unlist
 
 fit.rmse<-lapply(lm.fourier,
-                  function(x){rmse(Data0$Net_demand[sel_a],x$fitted)})%>%unlist
+                 function(x){rmse(Data0$Net_demand[sel_a],x$fitted)})%>%unlist
 
 forecast.rmse<-lapply(lm.fourier
                       , function(x){rmse(Data0$Net_demand[sel_b],predict(x,newdata=Data0[sel_b,]))})%>%unlist
@@ -267,9 +269,15 @@ acf(Data0$Net_demand, lag.max=7*3)
 acf( mod4$residuals, lag.max=7*3)
 
 
-form <- eq[[10]]
-form <- buildmer::add.terms(form, "Net_demand.1")
-form <- buildmer::add.terms(form, "Net_demand.7")
+form <- Net_demand ~ 
+  WeekDays3 +
+  Temp + Temp_trunc1 + Temp_trunc2 +
+  Net_demand.1 + Net_demand.7 +
+  cos1 + sin1 + cos2 + sin2 + cos3 + sin3 +
+  cos4 + sin4 + cos5 + sin5 +
+  cos6 + sin6 + cos7 + sin7 +
+  cos8 + sin8 + cos9 + sin9 +
+  cos10 + sin10
 
 
 mod5 <- lm(form, data=Data0[sel_a,])
@@ -286,22 +294,22 @@ rmse(y=Data0$Net_demand, ychap=mod5.cvpred)
 res <- Data0$Net_demand - mod5.cvpred
 quant <- qnorm(0.8, mean= mean(res), sd= sd(res))
 pb5 <- pinball_loss(y=Data0$Net_demand[sel_b], mod5.forecast+quant, quant=0.8, output.vect=FALSE)
-
+pb5
 
 
 
 synthese.test <- c(rmse(y=Data0$Net_demand[sel_b], ychap=mod1.forecast),
-                 rmse(y=Data0$Net_demand[sel_b],, ychap=mod2.forecast),
-                 rmse(y=Data0$Net_demand[sel_b],, ychap=mod3.forecast),
-                 rmse(y=Data0$Net_demand[sel_b],, ychap=mod4.forecast),
-                 rmse(y=Data0$Net_demand[sel_b],, ychap=mod5.forecast)
+                   rmse(y=Data0$Net_demand[sel_b],, ychap=mod2.forecast),
+                   rmse(y=Data0$Net_demand[sel_b],, ychap=mod3.forecast),
+                   rmse(y=Data0$Net_demand[sel_b],, ychap=mod4.forecast),
+                   rmse(y=Data0$Net_demand[sel_b],, ychap=mod5.forecast)
 )
 
 synthese.cv <- c(rmse(y=Data0$Net_demand, ychap=mod1.cvpred),
-  rmse(y=Data0$Net_demand, ychap=mod2.cvpred),
-  rmse(y=Data0$Net_demand, ychap=mod3.cvpred),
-  rmse(y=Data0$Net_demand, ychap=mod4.cvpred),
-  rmse(y=Data0$Net_demand, ychap=mod5.cvpred)
+                 rmse(y=Data0$Net_demand, ychap=mod2.cvpred),
+                 rmse(y=Data0$Net_demand, ychap=mod3.cvpred),
+                 rmse(y=Data0$Net_demand, ychap=mod4.cvpred),
+                 rmse(y=Data0$Net_demand, ychap=mod5.cvpred)
 )
 
 
@@ -521,7 +529,9 @@ rmse(y=Data0$Net_demand[sel_b], ychap=mod5.rq.forecast)
 
 mod5.rq.cvpred<-lapply(block_list, fitmod.rq, eq=form)%>%unlist
 rmse(y=Data0$Net_demand, ychap=mod5.rq.cvpred)
+pb_rq55 <- pinball_loss(y=Data0$Net_demand[sel_b], mod5.rq.forecast, quant=0.8, output.vect=FALSE)
 
-
+submit <- read_delim( file="Data/sample_submission_qr.csv", delim=",")
+submit$Net_demand <- mod5.ensemble.mean
 
 
