@@ -501,8 +501,6 @@ lines(synthese.cv, col='red', pch=20, type='b')
 abline(h=rmse(y=Data0$Net_demand[sel_b], ychap=rowMeans(mod.ensemble.test)), col='red')
 
 
-
-
 submit <- read_delim( file="Data/sample_submission.csv", delim=",")
 submit$Net_demand <- mod5.ensemble.mean
 write.table(submit, file="Data/submission_lm_ensemble_random.csv", quote=F, sep=",", dec='.',row.names = F)

@@ -17,11 +17,8 @@ df_test = pd.read_csv('./Data/net-load-forecasting-during-soberty-period/test.cs
 
 # Preprocess table data
 
-
-
 df_train = date_raw_to_numeric(df_train)
 df_test  = date_raw_to_numeric(df_test)
-
 
 df_train['WeekDays'] = df_train['WeekDays'].astype("category")
 df_test['WeekDays'] = df_test['WeekDays'].astype("category")
@@ -46,7 +43,7 @@ df_test["WeekDays3"] = (
 )
 
 w = 2 * np.pi / 365
-Nfourier = 10   # R settles near this
+Nfourier = 10
 
 for i in range(1, Nfourier + 1):
     df_train[f"cos{i}"] = np.cos(w * df_train["Time"] * i)
@@ -97,7 +94,6 @@ preprocess = ColumnTransformer(
 # VIKING
 
 
-
 target = 'Net_demand'
 
 X = preprocess.fit_transform(df_train)
@@ -130,7 +126,7 @@ X_test = preprocess.transform(df_test)
 
 model = QuantileRegressor(
     quantile=0.8,   # τ = 0.8
-    alpha=0.01,      # IMPORTANT: matches R's rq()
+    alpha=0.01,     # IMPORTANT: matches R's rq()
     solver="highs"  # most stable
 )
 model.fit(X, y)
@@ -147,9 +143,3 @@ print(f"CV Test error: {test_pinball}")
 submit = pd.read_csv("Data/sample_submission.csv")
 submit["Net_demand"] = y_pred
 submit.to_csv("Data/submission_lm_python.csv", index=False)
-
-write_predictions_csv(
-    y_pred, 
-    "Data/sample_submission.csv",
-     "Data/submission_lm_python.csv" 
-)

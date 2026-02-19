@@ -12,3 +12,6 @@ Perform variable selection
 * OPERA
 * AUTOARIMA
 * VIKING
+
+# Model selection
+* Backward model test
