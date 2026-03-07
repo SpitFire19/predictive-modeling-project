@@ -3,15 +3,22 @@ library(tidyverse)
 library(lubridate)
 library(readr)
 library(magrittr)
-source('~/Documents/predictive-modeling-project/R/score.R')
+library(forcats)
+source('~/Documents/M1MIA/predictive-modeling-project/R/score.R')
 
-setwd("~/Documents/predictive-modeling-project")
-Data0 <- read_delim("~/Documents/predictive-modeling-project/Data/net-load-forecasting-during-soberty-period/train.csv", delim=",")
-Data1<- read_delim("~/Documents/predictive-modeling-project/Data/net-load-forecasting-during-soberty-period/test.csv", delim=",")
+setwd("~/Documents/M1MIA/predictive-modeling-project/")
+Data0 <- read.csv("Data/net-load-forecasting-during-soberty-period/train.csv")
+Data1<- read.csv("Data/net-load-forecasting-during-soberty-period/test.csv")
 
 range(Data0$Date)
 
+
+Data0$Date <- as.Date(Data0$Date)
+Data0$Date <- as.Date(Data0$Date, format = "%d/%m/%Y")
 Data0$Time <- as.numeric(Data0$Date)
+
+Data1$Date <- as.Date(Data1$Date)
+Data1$Date <- as.Date(Data1$Date, format = "%d/%m/%Y")
 Data1$Time <- as.numeric(Data1$Date)
 
 
