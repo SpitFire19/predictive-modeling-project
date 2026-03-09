@@ -9,19 +9,16 @@ import warnings
 from data_utils import FeatureEngineerExpertReg, PrimaryFeatureEngineerExpert, DefaultFeatureEngineerExpert, pinball_loss, rss, tss
 from sklearn.model_selection import TimeSeriesSplit
 from data_utils import ExponentialSmoothing
+import lightgbm as lgb
 
 # Ignore some warnings
 warnings.filterwarnings("ignore")
 plt.style.use('seaborn-v0_8-darkgrid')
 QUANTILE = 0.8
-ALPHA = 0.00085
-
+ALPHA = 0.0004 # Value chosen by CV
 # smoothing parameter
-BIAS_SHIFT = -2500.0
+BIAS_SHIFT = -500.0
 
-# ============================================================================
-# 3. EXÉCUTION & CALCUL DES PERFORMANCES
-# ============================================================================
 train = pd.read_csv("Data/net-load-forecasting-during-soberty-period/train.csv")
 test = pd.read_csv("Data/net-load-forecasting-during-soberty-period/test.csv")
 
@@ -46,8 +43,7 @@ X_test = test_fe[features]
 
 true_test = test["Net_demand.1"].shift(-1)
 
-print(len(train_fe[features].columns.tolist())) # 103
-# print(*train_fe[features].columns)
+# print(len(train_fe[features].columns.tolist())) # 72
 
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
@@ -79,7 +75,7 @@ plt.title(f"Top {k} most important variables for QuantileRegressor", fontsize=20
 plt.xlabel("Absolute Coefficient", fontsize=18)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)   # slightly smaller since there are many labels
-plt.show()
+# plt.show()
 
 res_first = model.predict(X_test_scaled)
 
@@ -108,7 +104,7 @@ terms = (
 )
 
 
-gam_res = LinearGAM(terms, lam = 10)
+# gam_res = LinearGAM(terms, lam = 10)
 # gam_res.fit(X_train_scaled, res_train)
 # gam_res.summary()
 
@@ -123,14 +119,13 @@ params = {
     "metric": "quantile",
     "alpha": 0.6,
     "learning_rate": 0.03,
-    "num_leaves": tree_leaves,     # increase moderately
-    "min_data_in_leaf": 20,        # slight increase
-    "bagging_fraction": 0.70,
-    "bagging_freq": 1,
-    "lambda_l2": 10,  
+    "num_leaves": tree_leaves,
+    "min_data_in_leaf": 25,        
+    "bagging_fraction": 0.70, # draw 70% of data at random
+    "bagging_freq": 1,        # and do so at each iteration 
+    "lambda_l2": 10,
     "max_depth": tree_depth,
-    "min_gain_to_split": 0.03,
-    "extra_trees": True,           # Smooths out noise
+    "extra_trees": True,      # Reduce overfitting and smooth out noise
     "verbose": -1,
     "seed": 42
 }
@@ -155,52 +150,12 @@ viking.calibrate(preds_cal, y_cal)
 preds_val_raw = model.predict(X_val_scaled) + corr_model.predict(X_val_scaled)
 preds_val = viking.validate(preds_val_raw, y_val)
 
-"""
-# Graphique 1 : Réel vs Prédit
-axes[0].plot(train_fe[mask_val]["Time"], y_val, label="Réel", color='black', alpha=0.3)
-axes[0].plot(train_fe[mask_val]["Time"], preds_val, label="Prédiction (Shift + Kalman)", color='red')
-axes[0].set_title("Validation : Suivi de la demande")
-axes[0].legend()
-
-
-# Graphique 2 : Biais Kalman
-axes[1].plot(train_fe[mask_val]["Date"], viking.bias_hist, color='purple')
-axes[1].axhline(0, color='black', linestyle='--')
-axes[1].set_title("Évolution de la correction Kalman (Bias)")
-
-# Graphique 3 : Résidus Cumulés
-
-residus = np.array(y_val) - np.array(preds_val)
-axes[2].plot(train_fe[mask_val]["Date"], np.cumsum(residus), color='green', linewidth=2)
-axes[2].axhline(0, color='black', linestyle='-')
-axes[2].set_title("Somme Cumulée des Résidus (Stabilité de l'erreur)")
-
-plt.tight_layout()
-plt.show()
-"""
-
-tscv = TimeSeriesSplit(n_splits=5)
-
 scores = []
 X = X_scaled
 
-"""
-for train_idx, validation_idx in tscv.split(X):
-    X_train, X_valn = X[train_idx], X[validation_idx]
-    y_train, y_valn = y[train_idx], y[validation_idx]
-
-    model.fit(X_train, y_train)
-    preds = model.predict(X_valn)
-
-    score = pinball_loss(y_valn, preds, 0.8)
-    scores.append(score)
-
-print("CV scores:", scores)
-print("Mean CV score:", np.mean(scores))
-"""
 model.fit(X_train_scaled, y_train)
 y_pred_full = []
-viking1 = (alpha=0.07, bias_shift=BIAS_SHIFT)
+viking1 = ExponentialSmoothing(alpha=0.07, bias_shift=BIAS_SHIFT)
 
 k = 3470
 

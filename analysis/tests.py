@@ -6,11 +6,20 @@ from sklearn.preprocessing import StandardScaler
 from pygam import LinearGAM, s, f, te
 import matplotlib.pyplot as plt
 import warnings
-from data_utils import FeatureEngineerExpertReg, PrimaryFeatureEngineerExpert, DefaultFeatureEngineerExpert, VikingBias, pinball_loss, rss, tss
 from sklearn.model_selection import TimeSeriesSplit
 from dateutil.relativedelta import relativedelta
 from scipy.stats import pearsonr
 
+from pathlib import Path
+import sys
+
+warnings.filterwarnings("ignore", message="X does not have valid feature names")
+# Get the grandparent directory (the parent of the folder your script is in)
+parent_root = Path(__file__).resolve().parents[1]
+# Add it to sys.path
+sys.path.append(str(parent_root))
+
+from data_utils import FeatureEngineerExpertReg, PrimaryFeatureEngineerExpert, DefaultFeatureEngineerExpert, pinball_loss, rss, tss
 
 # Ignore some warnings
 warnings.filterwarnings("ignore")
@@ -31,12 +40,13 @@ test = pd.read_csv("Data/net-load-forecasting-during-soberty-period/test.csv")
 
 exp = FeatureEngineerExpertReg().fit(train)
 df = exp.transform(train)
-corr = df[['Time', 'Wind','Temp','Temp_s95','Time_Cooling', 'Temp_s99',
+
+corr = df[['Time', 'Week', 'Wind','Temp','Temp_s95','Time_Cooling', 'Temp_s99',
            'Nebulosity','Solar_power','Wind_power',
            'Load','Net_demand']].corr()
 
 
-col = 'Time_Cooling'
+col = 'Temp'
 print(corr[col].sort_values(ascending=False))
 start = pd.Timestamp("2013-03-02")
 end = pd.Timestamp("2022-09-01")
@@ -80,4 +90,11 @@ plt.xlabel("Wind")
 plt.ylabel("Net demand")
 plt.title("Wind vs Net demand across time periods")
 plt.legend()
-plt.show()
+# plt.show()
+
+
+print(f'train Temp min: {train['Temp'].min() - 273.15}')
+print(f'train Temp max: {train['Temp'].max() - 273.15}')
+
+print(f'test Temp min: {test['Temp'].min() - 273.15}')
+print(f'test Temp max: {test['Temp'].max() - 273.15}')
