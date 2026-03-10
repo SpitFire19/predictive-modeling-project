@@ -191,53 +191,65 @@ class FeatureEngineerExpertReg:
         wch_rbf = rbf_kernel(wch_vals, wch_anchors, gamma=self.gamma_wch)
         for i in range(wch_rbf.shape[1]):
             df[f'WindChill_RBF_{i}'] = wch_rbf[:, i]
-        return df
-    
-class ExponentialSmoothing:
-    def __init__(self, alpha=0.05, bias_shift=0.0):
-        self.alpha = alpha
-        self.bias = 0.0
-        self.shift = bias_shift
-        self.bias_hist = []
-    def update(self, y_true, y_pred_base):
-        err = y_true - (y_pred_base + self.shift + self.bias)
-        self.bias = self.alpha * err + (1 - self.alpha) * self.bias
-        # self.bias_hist.append(self.bias)
+        return df.drop(columns = 'Date')
 
-    def calibrate(self, y_hat, y):
-        for y_pred, y_t in zip(y_hat, y):
-            self.update(y_t, y_pred)
-
-    def validate(self, y_hat, y):
-        preds_val = []
-        for y_pred, y_t in zip(y_hat, y):
-            final_p = y_pred + self.shift + self.bias
-            self.bias_hist.append(self.bias)
-            self.update(y_t, y_pred)
-            preds_val.append(final_p)
-        return preds_val
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 # ============================================================================
 # KALMAN FILTER
 # ============================================================================
 
 class AdaptiveKalman:
-    def __init__(self,Q, R, B, quantile=0.8 ):
+    def __init__(self, Q, R, B, quantile=0.8):
         self.quantile = quantile
         self.bias = 0.0
-        self.P = 1000.0
+        self.P = 10 * R
         self.Q = Q
         self.R = R
         self.BIAS_SHIFT = B
+        self.bias_history = []
 
     def update(self, y_true, y_pred_base):
-        residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
+        # 1. Prediction Phase
         self.P += self.Q
+        
+        # 2. Innovation (Residual relative to the shifted base)
+        residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
+        
+        # 3. Kalman Gain
         K = self.P / (self.P + self.R)
+        
+        # 4. Asymmetric Weighting (Quantile Logic)
+        # This forces the bias to favor one side of the error distribution
         weight = self.quantile if residual > 0 else (1 - self.quantile)
+        
+        # 5. Update State and Covariance
         self.bias += K * residual * weight
         self.P *= (1 - K)
+        
+        self.bias_history.append(self.bias)
         return self.bias
+
+    def calibrate(self, y_train, y_pred_train_base):
+        """Warm up the filter using training data."""
+        for y_t, p_t in zip(y_train, y_pred_train_base):
+            self.update(y_t, p_t)
+        return self.bias
+
+    def validate(self, y_val, y_pred_val_base):
+        """
+        Returns predictions for the validation set. 
+        Note: Prediction for step 't' uses bias from 't-1'.
+        """
+        corrected_preds = []
+        for y_t, p_t in zip(y_val, y_pred_val_base):
+            # Predict using existing bias + shift
+            corrected_preds.append(p_t + self.BIAS_SHIFT + self.bias)
+            
+            # Update the state for the next step
+            # self.update(y_t, p_t)
+            
+        return np.array(corrected_preds)
 
 class DefaultFeatureEngineerExpert:
     def __init__(self):
@@ -251,18 +263,13 @@ class DefaultFeatureEngineerExpert:
         df = df_.copy()
         df['Date'] = pd.to_datetime(df['Date'])
         df['Time'] = (df['Date'] - self.train_date_min).dt.days
-        return df
+        return df.drop(columns = 'Date')
 
 class PrimaryFeatureEngineerExpert:
-    def __init__(self, drop_cols, n_Fourier=None, 
-                 gamma_Temp=None,
-                 gamma_Week=None,
-                 gamma_Year=None,
-                 gamma_Neb=None,
-                 gamma_Wind=None,
-                 gamma_Heat=None):
+    def __init__(self, drop_cols, n_Fourier=None):
         self.drop_cols = drop_cols
         self.train_date_min = None
+        self.n_Fourier = n_Fourier
 
     def fit(self, df):
         self.train_date_min = pd.to_datetime(df['Date']).min()
