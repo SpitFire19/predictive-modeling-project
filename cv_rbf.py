@@ -1,24 +1,20 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import QuantileRegressor
-from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
-from pygam import LinearGAM, s, f, te
 import matplotlib.pyplot as plt
 import warnings
 from data_utils import FeatureEngineerExpertReg, PrimaryFeatureEngineerExpert, DefaultFeatureEngineerExpert, pinball_loss, rss, tss
 from sklearn.model_selection import TimeSeriesSplit
 import lightgbm as lgb
 from sklearn.metrics.pairwise import rbf_kernel
-
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.kernel_approximation import RBFSampler
-from sklearn.compose import ColumnTransformer
+from sklearn.metrics import make_scorer, mean_pinball_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import QuantileRegressor
 from sklearn.model_selection import GridSearchCV
+from sklearn.base import BaseEstimator, TransformerMixin
+
 
 
 # Ignore some warnings
@@ -46,18 +42,8 @@ X_scaled = scaler.transform(train_fe)
 X_val_scaled = scaler.transform(train_fe[mask_val])
 X_test_scaled = scaler.transform(test_fe)
 
-X = train_fe
-y = train["Net_demand"]
-
-import numpy as np
-import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.metrics.pairwise import rbf_kernel
-import numpy as np
-import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.metrics import make_scorer, mean_pinball_loss
-
+X = X_train_scaled
+y = y_train
 
 class AddRBFFeatures(BaseEstimator, TransformerMixin):
 
@@ -84,7 +70,6 @@ class AddRBFFeatures(BaseEstimator, TransformerMixin):
         return np.exp(-gamma * (x - c) ** 2)
 
     def transform(self, X):
-
         X = X.copy()
 
         w = 2 * np.pi / 365.25
@@ -129,7 +114,7 @@ pipeline = Pipeline([
 print(pipeline.get_params().keys())
 
 param_grid = {
-    "rbf__n_features": [5, 6, 7, 8, 9],
+    "rbf__n_features": [5, 6, 7, 8],
     "rbf__gamma_temp": [0.002, 0.005, 0.01, 0.02],
     "rbf__gamma_neb":  [0.001, 0.005, 0.01],
     "rbf__gamma_wc":   [1e-7, 1e-6, 1e-5],

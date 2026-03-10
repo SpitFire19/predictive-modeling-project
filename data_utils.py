@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
-import os
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.metrics.pairwise import rbf_kernel
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.linear_model import QuantileRegressor
+import lightgbm as lgb
 
 def pinball_loss(y, yhat, tau):
     return np.mean(np.maximum(tau * (y - yhat),
@@ -34,81 +35,6 @@ def write_predictions_csv(
     submit = pd.read_csv(sample_pred_path)
     submit['Net_demand'] = pred
     submit.to_csv(output_path, index=False)
-
-class FeatureEngineerExpertGBM:
-    def __init__(self):
-        self.train_date_min = None
-
-    def fit(self, df):
-        self.train_date_min = pd.to_datetime(df['Date']).min()
-        return self
-
-    def transform(self, df):
-        df = df.copy()
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Month'] = df['Date'].dt.month
-        df['Time'] = (df['Date'] - self.train_date_min).dt.days
-        df['WeekDays3'] = (
-            pd.to_datetime(df['Date'])
-            .dt.day_name()
-            .replace({'Tuesday':'WorkDay','Wednesday':'WorkDay','Thursday':'WorkDay'})
-            .astype('category')
-        )
-        le = LabelEncoder()
-        df['WeekDays3'] = le.fit_transform(df['WeekDays3'])
-        # Sobriété & Température
-        inflection = (pd.to_datetime('2022-01-01') - self.train_date_min).days
-        df['Sobriety_Trend'] = np.maximum(0, df['Time'] - inflection)
-        df['is_holiday_season'] = df['Month'].isin([12, 1, 7, 8]).astype(int)
-        df['Heating_Std'] = np.maximum(288.15 - df['Temp_s95'], 0)
-        df['Thermal_Sobriety'] = df['Heating_Std'] * df['Sobriety_Trend'] / 1000
-        df['Wind_Chill'] = df['Heating_Std'] * df['Wind_weighted']
-        df['Heat_index'] = df['Temp'] + (0.55 * df['Nebulosity'])
-        df['Hour_Month'] = df['Time'] * 100 + df['Month']
-        df['Week']=df['Date'].dt.isocalendar().week.astype(int)
-        df['Is_Peak_Month'] = df['Date'].dt.month.isin([12, 1, 2]).astype(int)
-        # --- CORRECTION FINALE DU KEYERROR / ATTRIBUTEERROR ---
-        df['is_weekend'] = df['WeekDays'].isin([5, 6]).astype(int)
-        df['Cooling'] = df['Wind'] / df['Temp']
-        df['Time_Cooling'] = df['Time'] * df['Cooling']
-        is_winter = df['Month'].isin([12, 1, 2]).astype(int)
-        ## Are these two really necessary ?
-        df['is_shoulder'] = df['Month'].isin([3, 4, 5, 9, 10, 11]).astype(int)
-        df['Winter_Temp'] = df['Temp'] * is_winter
-        
-        # Weather_Demand_Driver = HDD + CDD - Solar_power_Forecast
-        df['Wind_eff'] = df['Wind_weighted'] / df['Wind']
-        # Si Usage existe, on compare, sinon on met 1 par défaut pour les jours ouvrés
-        if 'Usage' in df.columns:
-            df['Work_activity'] = np.where((df['is_weekend'] == 0) & (df['Usage'] == 'Public'), 1, 0)
-        else:
-            df['Work_activity'] = np.where(df['is_weekend'] == 0, 1, 0)
-
-        # Saisonnalité
-        w = 2 * np.pi / 365.25
-        for i in range(1, 7):
-            df[f'cos{i}'] = np.cos(df['Time'] * w * i)
-            df[f'sin{i}'] = np.sin(df['Time'] * w * i)
-                
-        # 1. Calculate Temp_Delta (The 'Shock' component)
-        # We use a 1-step difference (e.g., Change since last hour)
-
-    # 3. Optional: Non-Linear 'Heat Index' Momentum
-    # This captures the 'discomfort' factor more accurately
-    # (High humidity matters more at high temperatures)
-        target_time = df[df['Year'] == 2022]['Time'].mean()
-        target_temp  = 35.0 # Max heat
-
-        # Calculate distance to that 'event'
-        dist = (df['Temp'] - target_temp)**2
-        sigma = 10.0 # Control the width of the 'influence'
-
-        # The RBF feature: 1.0 when exactly at that point, 0.0 far away
-        df['RBF_2022_Heat_Regime'] = np.exp(-dist / (2 * sigma**2))
-
-        num_cols = df.select_dtypes(include=[np.number]).columns
-        df[num_cols] = df[num_cols].ffill().bfill().fillna(0)
-        return df
 
 class FeatureEngineerExpertReg:
     def __init__(self, gamma_temp = 0.01,
@@ -193,37 +119,44 @@ class FeatureEngineerExpertReg:
             df[f'WindChill_RBF_{i}'] = wch_rbf[:, i]
         return df.drop(columns = 'Date')
 
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-
-# ============================================================================
-# KALMAN FILTER
-# ============================================================================
-
+# Kalman filter
 class AdaptiveKalman:
     def __init__(self, Q, R, B, quantile=0.8):
+        """
+        Q: Process Noise (How fast the bias can change)
+        R: Measurement Noise (How much we trust the data)
+        B: Initial static bias shift
+        quantile: The target quantile for Pinball Loss (0.8)
+        """
         self.quantile = quantile
         self.bias = 0.0
-        self.P = 10 * R
-        self.Q = Q
-        self.R = R
+        self.P = 1.0     # Initial est. error covariance = identity
+        self.Q = Q       # Process noise covariance
+        self.R = R       # Measurement noise covariance
         self.BIAS_SHIFT = B
         self.bias_history = []
-
     def update(self, y_true, y_pred_base):
-        # 1. Prediction Phase
+        """
+        The 'Learning' Phase. 
+        Updates the internal bias state based on the error observed at time t.
+        """
+        # predict next state covariance
         self.P += self.Q
         
-        # 2. Innovation (Residual relative to the shifted base)
+        # calculate innovation (the error of the prediction we just made)
+        # we use the bias that existed BEFORE this update
         residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
-        
-        # 3. Kalman Gain
+        #  calculate Kalman gain
         K = self.P / (self.P + self.R)
-        
-        # 4. Asymmetric Weighting (Quantile Logic)
-        # This forces the bias to favor one side of the error distribution
+        print(K)
+        # asymmetric Weighting - this is our modification
+        # to adjust better to pinball loss
+
+        # residual > 0 -> under-prediction, weight is alpha
+        # residual < 0 -> over-prediction, weight is 1-alpha
         weight = self.quantile if residual > 0 else (1 - self.quantile)
         
-        # 5. Update State and Covariance
+        # update state (Bias and Covariance)
         self.bias += K * residual * weight
         self.P *= (1 - K)
         
@@ -231,25 +164,11 @@ class AdaptiveKalman:
         return self.bias
 
     def calibrate(self, y_train, y_pred_train_base):
-        """Warm up the filter using training data."""
+        """Warm up the filter using training data to settle the bias."""
         for y_t, p_t in zip(y_train, y_pred_train_base):
             self.update(y_t, p_t)
         return self.bias
 
-    def validate(self, y_val, y_pred_val_base):
-        """
-        Returns predictions for the validation set. 
-        Note: Prediction for step 't' uses bias from 't-1'.
-        """
-        corrected_preds = []
-        for y_t, p_t in zip(y_val, y_pred_val_base):
-            # Predict using existing bias + shift
-            corrected_preds.append(p_t + self.BIAS_SHIFT + self.bias)
-            
-            # Update the state for the next step
-            # self.update(y_t, p_t)
-            
-        return np.array(corrected_preds)
 
 class DefaultFeatureEngineerExpert:
     def __init__(self):
@@ -315,3 +234,46 @@ class PrimaryFeatureEngineerExpert:
 
         df = df.drop(columns=[c for c in self.drop_cols if c in df.columns])
         return df
+  
+def k_CV(X, y, n_splits):
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    scores = []
+    for train_idx, validation_idx in tscv.split(X):
+        X_train, X_valn = X[train_idx], X[validation_idx]
+        y_train, y_valn = y[train_idx], y[validation_idx]
+        model = QuantileRegressor(quantile=0.8, alpha=0.0004, solver='highs')
+        model.fit(X_train, y_train)
+        preds = model.predict(X_valn)
+        score = pinball_loss(y_valn, preds, 0.8)
+        scores.append(score)
+
+    # print("CV scores:", scores)
+    print(f"Mean CV score for linear model:", np.mean(scores))
+
+def k_CV_corr(X, y, model, params_corr_model, n_splits):
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    scores = []
+    for train_idx, validation_idx in tscv.split(X):
+        X_train, X_valn = X[train_idx], X[validation_idx]
+        y_train, y_valn = y[train_idx], y[validation_idx]
+        model.fit(X_train, y_train)
+        res_train = y_train - model.predict(X_train)
+        res_val = y_valn - model.predict(X_valn)
+        train_set = lgb.Dataset(X_train, label=res_train)
+        val_set   = lgb.Dataset(X_valn, label=res_val)
+        corr_model = lgb.train(
+            params_corr_model,
+            train_set,
+            num_boost_round=5000,
+            valid_sets=[train_set, val_set],
+            callbacks=[
+            lgb.early_stopping(stopping_rounds=100), # early stopping
+            lgb.log_evaluation(period=0)            # logging
+
+        ])
+        preds = model.predict(X_valn) + corr_model.predict(X_valn)
+        score = pinball_loss(y_valn, preds, 0.8)
+        scores.append(score)
+
+    # print("CV scores:", scores)
+    print(f"Mean CV score for linear model + GBM correction:", np.mean(scores))

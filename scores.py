@@ -38,6 +38,7 @@ X_train = fe.transform(df_train_raw)
 X_cal = fe.transform(df_cal_raw)
 X_val = fe.transform(df_val_raw)
 
+# true_test = test["Net_demand.1"].shift(-1)
 
 y_train = df_train_raw['Net_demand']
 y_cal= df_cal_raw['Net_demand']

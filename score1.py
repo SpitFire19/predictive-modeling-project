@@ -87,6 +87,22 @@ plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 # plt.show()
 
+def k_CV(X, y, alpha, n_splits):
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    scores = []
+    for train_idx, validation_idx in tscv.split(X):
+        X_train, X_valn = X[train_idx], X[validation_idx]
+        y_train, y_valn = y[train_idx], y[validation_idx]
+        model = QuantileRegressor(quantile=0.8, alpha=alpha, solver='highs')
+        model.fit(X_train, y_train)
+        preds = model.predict(X_valn)
+
+        score = pinball_loss(y_valn, preds, 0.8)
+        scores.append(score)
+
+    # print("CV scores:", scores)
+    print(f"Mean CV score for alpha =  {alpha}:", np.mean(scores))
+
 
 fe = PrimaryFeatureEngineerExpert(drop_cols=exclude).fit(df_train_raw)
 X_train_raw = fe.transform(df_train_raw)
