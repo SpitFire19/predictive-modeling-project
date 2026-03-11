@@ -5,7 +5,6 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import warnings
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics.pairwise import rbf_kernel
 from sklearn.metrics import make_scorer, mean_pinball_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -33,7 +32,6 @@ test = pd.read_csv("Data/net-load-forecasting-during-soberty-period/test.csv")
 
 mask_train = train["Date"] < "2022-04-01"
 mask_val = train["Date"] >= "2022-04-01"
-
 
 df_train_raw = train[mask_train]
 df_val_raw = train[mask_val]
@@ -122,7 +120,6 @@ pipeline = Pipeline([
 ])
 
 print(pipeline.get_params().keys())
-
 
 # we know the scale of hyperparameters and want to know the best values
 param_grid = {
