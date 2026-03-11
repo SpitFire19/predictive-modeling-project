@@ -34,7 +34,7 @@ df = exp.transform(train)
 
 corr = df[['Time', 'Week', 'Wind','Temp','Temp_s95','Time_Cooling', 'Temp_s99',
            'Nebulosity','Solar_power','Wind_power',
-           'Load','Net_demand']].corr()
+           'Load','Net_demand', 'Year_Continuous']].corr()
 
 
 col = 'Temp'
@@ -71,7 +71,7 @@ for p in df_plot["period"].unique():
     print(p, "slope:", slope)
 
 columns = ['Sobriety_Trend', 'Heating_Std', 'Cooling_Std', 'Wind_Chill', 'Temp_vs_Weekly_Max', 
-           'Week', 'Time_Cooling', 'Is_Peak_Month', 'Work_activity']
+           'Week', 'Time_Cooling', 'Is_Peak_Month', 'Work_activity', 'Year_Continuous']
 for colname in columns:
     r, p = pearsonr(df[colname], df["Net_demand"])
     print(f'{colname} p-value: {r:.2f}, {p}')

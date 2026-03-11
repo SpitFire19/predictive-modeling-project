@@ -4,7 +4,7 @@ from sklearn.linear_model import QuantileRegressor
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import warnings
-from data_utils import FeatureEngineerExpertReg, pinball_loss, DefaultFeatureEngineerExpert, PrimaryFeatureEngineerExpert
+from data_utils import RBFFeatureEngineerExpert, pinball_loss, DefaultFeatureEngineerExpert, PrimaryFeatureEngineerExpert
 from sklearn.model_selection import TimeSeriesSplit
 from data_utils import AdaptiveKalman
 import lightgbm as lgb
@@ -28,7 +28,7 @@ df_cal_raw = train[mask_cal]
 df_val_raw = train[mask_val]
 
 exclude = ["Date","Net_demand","Load","Solar_power", 'Wind',"Wind_power","WeekDays","Id","Usage","Year","Month"]
-fe = FeatureEngineerExpertReg().fit(df_train_raw)
+fe = RBFFeatureEngineerExpert().fit(df_train_raw)
 
 X_train = fe.transform(df_train_raw)
 X_cal = fe.transform(df_cal_raw)

@@ -47,7 +47,6 @@ fe = PrimaryFeatureEngineerExpert(drop_cols=exclude).fit(df_train_raw)
 X_train = fe.transform(df_train_raw)
 X_val = fe.transform(df_val_raw)
 
-
 features = [c for c in X_train.columns if c not in exclude]
 
 X_train, X_val = X_train[features], X_val[features]
@@ -155,7 +154,7 @@ grid.fit(X, y)
 
 best_model = grid.best_estimator_
 
-# takes around 5 min
+# takes around 5-7 min
 print(grid.best_params_)
 # {'model__alpha': 0.0004, 'rbf__gamma_neb': 0.001, 'rbf__gamma_temp': 0.01, 'rbf__gamma_wc': 1e-07, 'rbf__n_features': 7}
 print(grid.best_score_)

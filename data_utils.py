@@ -27,7 +27,7 @@ class AdaptiveKalman:
         self.bias_history = []
     def update(self, y_true, y_pred_base):
         """
-        The 'Learning' Phase. 
+        The learning phase. 
         Updates the internal bias state based on the error observed at time t.
         """
         # predict next state covariance
@@ -38,7 +38,6 @@ class AdaptiveKalman:
         residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
         #  calculate Kalman gain
         K = self.P / (self.P + self.R)
-        print(K)
         # asymmetric Weighting - this is our modification
         # to adjust better to pinball loss
 
