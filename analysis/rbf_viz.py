@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-#  True function
+# example function
 def f(x):
     return np.sin(x)
 
@@ -15,34 +15,34 @@ centers = np.linspace(0, 10, n_centers)
 # RBF width
 gamma = 0.8
 
-# Compute RBF basis functions
+# compute RBF basis functions
 Phi = np.zeros((len(x), n_centers))
 
 for i, c in enumerate(centers):
     Phi[:, i] = np.exp(-gamma * (x - c)**2)
 
-# Fit linear weights to approximate the function
-# Solve Phi w = y
+# fit linear weights to approximate the function
+# solve Phi w = y
 w = np.linalg.lstsq(Phi, y_true, rcond=None)[0]
 
 # RBF approximation
 y_pred = Phi @ w
 
-# Plot
+# plot
 plt.figure(figsize=(12,6))
 
-# True function
+# true function
 plt.plot(x, y_true, linewidth=4, label="True function")
 
 # RBF approximation
 plt.plot(x, y_pred, '--', linewidth=3, label="RBF approximation")
 
-# Plot RBF splines
+# plot RBF splines
 colors = plt.cm.rainbow(np.linspace(0,1,n_centers))
 for i in range(n_centers):
     plt.fill_between(x, -1, Phi[:,i]-1, color=colors[i], alpha=0.35)
 
-# Plot centers
+# plot centers
 plt.scatter(centers, np.interp(centers, x, y_true),
             color="black", s=120, zorder=5, label="RBF centers")
 

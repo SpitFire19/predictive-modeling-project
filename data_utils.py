@@ -9,37 +9,131 @@ def pinball_loss(y, yhat, tau):
     return np.mean(np.maximum(tau * (y - yhat),
                               (tau - 1) * (y - yhat)))
 
-def rss(y, yhat):
-    return np.sum([(y0 - yh) ** 2 for y0, yh in zip(y, yhat)])
+# Kalman filter
+class AdaptiveKalman:
+    def __init__(self, Q, R, B, quantile=0.8):
+        """
+        Q: Process Noise (How fast the bias can change)
+        R: Measurement Noise (How much we trust the data)
+        B: Initial static bias shift
+        quantile: The target quantile for Pinball Loss (0.8)
+        """
+        self.quantile = quantile
+        self.bias = 0.0
+        self.P = 1.0     # Initial est. error covariance = identity
+        self.Q = Q       # Process noise covariance
+        self.R = R       # Measurement noise covariance
+        self.BIAS_SHIFT = B
+        self.bias_history = []
+    def update(self, y_true, y_pred_base):
+        """
+        The 'Learning' Phase. 
+        Updates the internal bias state based on the error observed at time t.
+        """
+        # predict next state covariance
+        self.P += self.Q
+        
+        # calculate innovation (the error of the prediction we just made)
+        # we use the bias that existed BEFORE this update
+        residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
+        #  calculate Kalman gain
+        K = self.P / (self.P + self.R)
+        print(K)
+        # asymmetric Weighting - this is our modification
+        # to adjust better to pinball loss
 
-def tss(y):
-    return np.sum((y - np.mean(y) ** 2))
+        # residual > 0 -> under-prediction, weight is alpha
+        # residual < 0 -> over-prediction, weight is 1-alpha
+        weight = self.quantile if residual > 0 else (1 - self.quantile)
+        
+        # update state (Bias and Covariance)
+        self.bias += K * residual * weight
+        self.P *= (1 - K)
+        
+        self.bias_history.append(self.bias)
+        return self.bias
 
-def import_raw_from_csv(dir_path: str) -> pd.DataFrame:
-    df_train = pd.read_csv(f'{dir_path}/train.csv')
-    df_test = pd.read_csv(f'{dir_path}/test.csv')
-    return df_train, df_test
+    def calibrate(self, y_train, y_pred_train_base):
+        """Warm up the filter using training data to settle the bias."""
+        for y_t, p_t in zip(y_train, y_pred_train_base):
+            self.update(y_t, p_t)
+        return self.bias
 
-def date_raw_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    df['Time'] = (
-    pd.to_datetime(df['Date']) - pd.Timestamp('1970-01-01')
-    ).dt.days
-    return df
-    # return df.drop(columns = 'Date')
+# Default features (no processing except Date removal)
+class DefaultFeatureEngineerExpert:
+    def __init__(self):
+        self.train_date_min = None
 
-def write_predictions_csv(
-    pred: list[float],
-    sample_pred_path: str,
-    output_path: str
-):
-    submit = pd.read_csv(sample_pred_path)
-    submit['Net_demand'] = pred
-    submit.to_csv(output_path, index=False)
+    def fit(self, df):
+        self.train_date_min = pd.to_datetime(df['Date']).min()
+        return self
 
-class FeatureEngineerExpertReg:
+    def transform(self, df_):
+        df = df_.copy()
+        df['Date'] = pd.to_datetime(df['Date'])
+        df['Time'] = (df['Date'] - self.train_date_min).dt.days
+        return df.drop(columns = 'Date')
+
+# Add only basic features
+class PrimaryFeatureEngineerExpert:
+    def __init__(self, drop_cols, n_Fourier=None):
+        self.drop_cols = drop_cols
+        self.train_date_min = None
+        self.n_Fourier = n_Fourier
+
+    def fit(self, df):
+        self.train_date_min = pd.to_datetime(df['Date']).min()
+        return self
+
+    def transform(self, df):
+        df = df.copy()
+        df['Date'] = pd.to_datetime(df['Date'])
+        df['Time'] = (df['Date'] - self.train_date_min).dt.days
+        
+        # Sobriété & Température
+        inflection = (pd.to_datetime('2022-01-01') - self.train_date_min).days
+        df['Sobriety_Trend'] = np.maximum(0,df['Time']-inflection)
+
+        df['Heating_Std'] = np.maximum(288.15 - df['Temp_s95'], 0)
+        df['Cooling_Std'] = np.maximum(df['Temp_s95'] - 295.15, 0) 
+        
+        df['Wind_Chill'] = df['Heating_Std'] * df['Wind_weighted']
+
+        df['Week']=df['Date'].dt.isocalendar().week.astype(int)
+        df['Temp_vs_Weekly_Max']=df['Temp']/df['Temp'].rolling(window=7,min_periods=1).max()
+        
+        df['Time_Cooling'] = df['Time'] * df['Wind_weighted']
+
+        df['Is_Peak_Month'] = df['Date'].dt.month.isin([12, 1, 2]).astype(int)
+        
+        is_weekend = df['WeekDays'].isin([5, 6]).astype(int)
+        if 'Usage' in df.columns:
+            df['Work_activity'] = np.where((is_weekend == 0) & (df['Usage'] == 'Public'), 1, 0)
+        else:
+            df['Work_activity'] = np.where(is_weekend == 0, 1, 0)
+        
+        df['Year_Continuous'] = df['Date'].dt.year + (df['Date'].dt.dayofyear / 366)
+
+        DayOfWeek = df['Date'].dt.dayofweek
+    
+        # create periodic weekly features (with period = 7)
+        df['week_sin'] = np.sin(2 * np.pi * DayOfWeek / 7)
+        df['week_cos'] = np.cos(2 * np.pi * DayOfWeek / 7)
+
+        if self.n_Fourier != None:
+            df = self.addPeriodicFourier(df, self.n_Fourier)
+
+        df = df.drop(columns=[c for c in self.drop_cols if c in df.columns])
+        return df
+  
+# Full features set (RBF, Fourier)
+class RBFFeatureEngineerExpert:
     def __init__(self, gamma_temp = 0.01,
                 gamma_neb = 0.001, gamma_wch = 1e-07,
                 n_Fourier_features= 7):
+        """
+        Default gammas for RBF features were chosen by TimeSeriesSplit
+        """
         self.train_date_min = None
         self.gamma_temp = gamma_temp
         self.gamma_neb = gamma_neb
@@ -119,136 +213,21 @@ class FeatureEngineerExpertReg:
             df[f'WindChill_RBF_{i}'] = wch_rbf[:, i]
         return df.drop(columns = 'Date')
 
-# Kalman filter
-class AdaptiveKalman:
-    def __init__(self, Q, R, B, quantile=0.8):
-        """
-        Q: Process Noise (How fast the bias can change)
-        R: Measurement Noise (How much we trust the data)
-        B: Initial static bias shift
-        quantile: The target quantile for Pinball Loss (0.8)
-        """
-        self.quantile = quantile
-        self.bias = 0.0
-        self.P = 1.0     # Initial est. error covariance = identity
-        self.Q = Q       # Process noise covariance
-        self.R = R       # Measurement noise covariance
-        self.BIAS_SHIFT = B
-        self.bias_history = []
-    def update(self, y_true, y_pred_base):
-        """
-        The 'Learning' Phase. 
-        Updates the internal bias state based on the error observed at time t.
-        """
-        # predict next state covariance
-        self.P += self.Q
-        
-        # calculate innovation (the error of the prediction we just made)
-        # we use the bias that existed BEFORE this update
-        residual = y_true - (y_pred_base + self.BIAS_SHIFT + self.bias)
-        #  calculate Kalman gain
-        K = self.P / (self.P + self.R)
-        print(K)
-        # asymmetric Weighting - this is our modification
-        # to adjust better to pinball loss
-
-        # residual > 0 -> under-prediction, weight is alpha
-        # residual < 0 -> over-prediction, weight is 1-alpha
-        weight = self.quantile if residual > 0 else (1 - self.quantile)
-        
-        # update state (Bias and Covariance)
-        self.bias += K * residual * weight
-        self.P *= (1 - K)
-        
-        self.bias_history.append(self.bias)
-        return self.bias
-
-    def calibrate(self, y_train, y_pred_train_base):
-        """Warm up the filter using training data to settle the bias."""
-        for y_t, p_t in zip(y_train, y_pred_train_base):
-            self.update(y_t, p_t)
-        return self.bias
-
-
-class DefaultFeatureEngineerExpert:
-    def __init__(self):
-        self.train_date_min = None
-
-    def fit(self, df):
-        self.train_date_min = pd.to_datetime(df['Date']).min()
-        return self
-
-    def transform(self, df_):
-        df = df_.copy()
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Time'] = (df['Date'] - self.train_date_min).dt.days
-        return df.drop(columns = 'Date')
-
-class PrimaryFeatureEngineerExpert:
-    def __init__(self, drop_cols, n_Fourier=None):
-        self.drop_cols = drop_cols
-        self.train_date_min = None
-        self.n_Fourier = n_Fourier
-
-    def fit(self, df):
-        self.train_date_min = pd.to_datetime(df['Date']).min()
-        return self
-
-    def transform(self, df):
-        df = df.copy()
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Time'] = (df['Date'] - self.train_date_min).dt.days
-        
-        # Sobriété & Température
-        inflection = (pd.to_datetime('2022-01-01') - self.train_date_min).days
-        df['Sobriety_Trend'] = np.maximum(0,df['Time']-inflection)
-
-        df['Heating_Std'] = np.maximum(288.15 - df['Temp_s95'], 0)
-        df['Cooling_Std'] = np.maximum(df['Temp_s95'] - 295.15, 0) 
-        
-        df['Wind_Chill'] = df['Heating_Std'] * df['Wind_weighted']
-
-        df['Week']=df['Date'].dt.isocalendar().week.astype(int)
-        df['Temp_vs_Weekly_Max']=df['Temp']/df['Temp'].rolling(window=7,min_periods=1).max()
-        
-        df['Time_Cooling'] = df['Time'] * df['Wind_weighted']
-
-        df['Is_Peak_Month'] = df['Date'].dt.month.isin([12, 1, 2]).astype(int)
-        
-        is_weekend = df['WeekDays'].isin([5, 6]).astype(int)
-        if 'Usage' in df.columns:
-            df['Work_activity'] = np.where((is_weekend == 0) & (df['Usage'] == 'Public'), 1, 0)
-        else:
-            df['Work_activity'] = np.where(is_weekend == 0, 1, 0)
-        
-        df['Year_Continuous'] = df['Date'].dt.year + (df['Date'].dt.dayofyear / 366)
-
-        DayOfWeek = df['Date'].dt.dayofweek
-    
-        # create periodic weekly features (with period = 7)
-        df['week_sin'] = np.sin(2 * np.pi * DayOfWeek / 7)
-        df['week_cos'] = np.cos(2 * np.pi * DayOfWeek / 7)
-
-        if self.n_Fourier != None:
-            df = self.addPeriodicFourier(df, self.n_Fourier)
-
-        df = df.drop(columns=[c for c in self.drop_cols if c in df.columns])
-        return df
-  
-def k_CV(X, y, n_splits):
+def k_CV(X, y, alpha, n_splits):
     tscv = TimeSeriesSplit(n_splits=n_splits)
     scores = []
     for train_idx, validation_idx in tscv.split(X):
         X_train, X_valn = X[train_idx], X[validation_idx]
         y_train, y_valn = y[train_idx], y[validation_idx]
-        model = QuantileRegressor(quantile=0.8, alpha=0.0004, solver='highs')
+        model = QuantileRegressor(quantile=0.8, alpha=alpha, solver='highs')
         model.fit(X_train, y_train)
         preds = model.predict(X_valn)
+
         score = pinball_loss(y_valn, preds, 0.8)
         scores.append(score)
 
     # print("CV scores:", scores)
-    print(f"Mean CV score for linear model:", np.mean(scores))
+    print(f"Mean CV score for alpha =  {alpha}:", np.mean(scores))
 
 def k_CV_corr(X, y, model, params_corr_model, n_splits):
     tscv = TimeSeriesSplit(n_splits=n_splits)

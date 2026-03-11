@@ -9,36 +9,27 @@ import warnings
 from sklearn.model_selection import TimeSeriesSplit
 from dateutil.relativedelta import relativedelta
 from scipy.stats import pearsonr
-
 from pathlib import Path
 import sys
 
-warnings.filterwarnings("ignore", message="X does not have valid feature names")
-# Get the grandparent directory (the parent of the folder your script is in)
+# Get the grandparent directory
 parent_root = Path(__file__).resolve().parents[1]
 # Add it to sys.path
 sys.path.append(str(parent_root))
 
-from data_utils import FeatureEngineerExpertReg, PrimaryFeatureEngineerExpert, DefaultFeatureEngineerExpert, pinball_loss, rss, tss
+from data_utils import RBFFeatureEngineerExpert
 
 # Ignore some warnings
+warnings.filterwarnings("ignore", message="X does not have valid feature names")
 warnings.filterwarnings("ignore")
 plt.style.use('seaborn-v0_8-darkgrid')
 QUANTILE = 0.8
-ALPHA = 0.00085
 
-# VIKING parameters
-Q_FINAL = 4550.0
-R_FINAL = 250.0
-BIAS_SHIFT = -2500.0
 
-# ============================================================================
-# 3. EXÉCUTION & CALCUL DES PERFORMANCES
-# ============================================================================
 train = pd.read_csv("Data/net-load-forecasting-during-soberty-period/train.csv")
 test = pd.read_csv("Data/net-load-forecasting-during-soberty-period/test.csv")
 
-exp = FeatureEngineerExpertReg().fit(train)
+exp = RBFFeatureEngineerExpert().fit(train)
 df = exp.transform(train)
 
 corr = df[['Time', 'Week', 'Wind','Temp','Temp_s95','Time_Cooling', 'Temp_s99',
@@ -95,6 +86,3 @@ plt.legend()
 
 print(f'train Temp min: {train['Temp'].min() - 273.15}')
 print(f'train Temp max: {train['Temp'].max() - 273.15}')
-
-print(f'test Temp min: {test['Temp'].min() - 273.15}')
-print(f'test Temp max: {test['Temp'].max() - 273.15}')

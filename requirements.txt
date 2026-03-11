@@ -2,5 +2,5 @@ numpy
 scipy
 pandas
 scikit-learn
-pygam # optional
 matplotlib
+lightgbm
