@@ -15,6 +15,7 @@
 ├── img/                        # Related graphics and images
 ├── requirements.txt
 ├── data_utils.py               # Contains feature engineering and Kalman filter
+├── final_report.py             # Final report in pdf
 ├── kalman_interactive.py       # Notebook to observe the positive effects of Kalman filter
 ├── model_interactive.py        # Model code + plots to interpret the model
 ├── model_submission.py         # Model code that gives submission_final.csv

@@ -25,13 +25,14 @@ def build_importance_plot(model, ax):
     # Sort
     importance = importance.sort_values("abs_coef", ascending=False)
     # Plot top important variables
+    ax.set_title("Absolute coefficient")
     ax.barh(importance["feature"].head(k)[::-1],
-         importance["abs_coef"].head(k)[::-1])
+         importance["abs_coef"].head(k)[::-1],
+         height=0.8)
 
 
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15), sharex=True, facecolor='white')
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 16), facecolor='white')
 plt.style.use('seaborn-v0_8-darkgrid')
-
 
 train = pd.read_csv("Data/net-load-forecasting-during-soberty-period/train.csv")
 
@@ -81,7 +82,6 @@ print(f'Model with default features performance: ', pb1)
 build_importance_plot(model, ax1)
 
 plt.title(f"Top {k} variables for different QuantileRegressors", fontsize=20)
-plt.xlabel("Absolute Coefficient", fontsize=18)
 
 fe = PrimaryFeatureEngineerExpert(drop_cols=exclude).fit(df_train_raw)
 X_train_raw = fe.transform(df_train_raw)
@@ -102,6 +102,7 @@ pred_val = model.predict(X_val_scaled)
 pb2 =  pinball_loss(pred_val, y_val, 0.8)
 print(f'Model with primary features performance: ', pb2)
 build_importance_plot(model, ax2)
+plt.show()
 
 fe = RBFFeatureEngineerExpert().fit(df_train_raw)
 
@@ -122,10 +123,8 @@ model.fit(X_train_scaled, y_train)
 pred_raw = model.predict(X_val_scaled)
 pb3 = pinball_loss(y_val, pred_raw, 0.8)
 print(f'Model with RBF features performance: ', pb3)
-
 print(f"RBF model features count: {len(features)}")
-build_importance_plot(model, ax3)
-plt.show()
+
 
 # Build comparison between feature engineering strategies
 model_names = ['Default', 'Primary', 'RBF']
@@ -146,10 +145,6 @@ for bar in bars:
             color='#4d4d4d', # Dark gray for contrast, not pure black
             weight='normal')
     
-# Add labels on top of bars
-for bar in bars:
-    pass# yval = bar.get_height()
-    # plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01, round(yval, 4), ha='center', va='bottom', fontsize=12)
 
 plt.ylabel('Pinball Loss', fontsize=14)
 plt.grid(axis='y', linestyle='--', alpha=0.7)
