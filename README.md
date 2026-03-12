@@ -1,3 +1,6 @@
+# About
+University project on time series forecasting. Predict electricity net demand using historical data.
+
 # GitHub repository structure
 ```
 ├── Data/                       # Train and test data
