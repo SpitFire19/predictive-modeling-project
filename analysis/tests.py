@@ -68,3 +68,6 @@ for colname in columns:
 # Print max and min Temperature for RBF feature construction
 print(f'train Temp min: {train['Temp'].min() - 273.15}')
 print(f'train Temp max: {train['Temp'].max() - 273.15}')
+
+print(df['toy'].unique())
+print(df['Year_Continuous'].unique())
