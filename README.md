@@ -9,6 +9,7 @@
 ├── analysis/                   # Model analysis and hyperparameter selection
 │   └── cv_rbf.py
 │   └── rbf_viz.py
+│   └── select_gbm.py
 │   └── tests.py
 │   └── val_scores_linear.py
 ├── img/                        # Related graphics and images
@@ -26,6 +27,8 @@
 * ```cv_rbf.py``` contains ```TimeSeriesSplit```-driven cross-validation for 5 hyperparameters: L1-regularization, number of Fourier features, 3 RBF hyperparameters
 
 * ```rbf_viz``` contains visualization of approximation of sine function by RBF function (used only for presentation)
+
+* ```select_gbm.py``` contains the GBM model selection 
 
 * ```tests.py``` contains correlation calculations over certain features and some data analysis
 
