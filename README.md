@@ -24,11 +24,11 @@
 
 # Analysis folder description
 
-* ```cv_rbf.py``` contains ```TimeSeriesSplit```-driven cross-validation for 5 hyperparameters: L1-regularization, number of Fourier features, 3 RBF hyperparameters
+* ```cv_rbf.py``` contains ```TimeSeriesSplit```-driven cross-validation for 5 hyperparameters: L1-regularization, number of Fourier features, 3 RBF hyperparameters of the linear model.
 
-* ```rbf_viz``` contains visualization of approximation of sine function by RBF function (used only for presentation)
+* ```rbf_viz``` contains visualization of approximation of sine function by RBF function
 
-* ```select_gbm.py``` contains the GBM model selection 
+* ```select_gbm.py``` contains the model selection for the residual correction layer
 
 * ```tests.py``` contains correlation calculations over certain features and some data analysis
 
