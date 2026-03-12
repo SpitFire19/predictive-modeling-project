@@ -52,7 +52,7 @@ model = QuantileRegressor(quantile=0.8, alpha=ALPHA, solver='highs')
 model.fit(X_train_scaled, y_train)
 
 pred_raw = model.predict(X_val_scaled)
-manual_loss = pinball_loss(y_val, pred_raw, alpha=0.8)
+manual_loss = pinball_loss(y_val, pred_raw, 0.8)
 print("Validation pinball loss :", manual_loss)
 
 res_train = y_train - model.predict(X_train_scaled)
